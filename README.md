@@ -6,11 +6,26 @@
 
 ![Math](https://img.shields.io/badge/math-constant_product-111827) ![Precision](https://img.shields.io/badge/precision-bigint-7C3AED) ![Fees](https://img.shields.io/badge/fees-explicit-16A085) ![Tests](https://img.shields.io/badge/scenarios-9-2563EB)
 
+[![CI](https://github.com/0xENTYPER/bonding-curve-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/0xENTYPER/bonding-curve-simulator/actions/workflows/ci.yml)
+
 </div>
 
 This repository isolates one of the riskiest parts of a token launch product: turning reserve math into quotes that users and contracts can independently reproduce. It models buys, sells, fees, price impact, slippage bounds, net base raised, and graduation.
 
 It is a runnable engineering reference inspired by launchpad work. It is not the production Baggy protocol, deployed contract code, or an audited financial system.
+
+![Bonding curve quote and state](docs/curve-visual.svg)
+
+## At a glance
+
+| Concern | Model choice | Product result |
+| --- | --- | --- |
+| Precision | Integer `bigint` arithmetic | Frontend quotes remain contract-comparable |
+| Invariant | Constant product with conservative rounding | Reserve math cannot drift downward through division |
+| Fees | Explicit and outside the invariant | Users can see the economic split |
+| Slippage | `minimumOut` in every quote | Wallet protection is a concrete amount |
+| Lifecycle | Graduation is terminal | The UI cannot quote a closed bonding market |
+| Simulation | Quote returns `stateAfter` | Multi-step scenarios need no mutable singleton |
 
 ## Why isolate the curve
 
@@ -69,6 +84,18 @@ interface TradeQuote {
 
 Every output is an integer in the asset's smallest unit. Formatting belongs to the interface layer, where token decimals are known.
 
+### State transition
+
+```mermaid
+stateDiagram-v2
+    [*] --> Trading
+    Trading --> Trading: quote buy / quote sell
+    Trading --> Graduated: net base raised >= target
+    Graduated --> [*]
+```
+
+Quotes are pure projections. The caller decides whether to commit `stateAfter`; this keeps previews, tests, simulations, and contract reconciliation on the same path.
+
 ## Design decisions
 
 | Decision | Reason |
@@ -95,6 +122,38 @@ console.log({
 });
 ```
 
+For the included reference configuration, a `2 ETH` buy produces a quote shaped like this:
+
+| Line item | Illustrative result |
+| --- | ---: |
+| User pays | `2.000000 ETH` |
+| Protocol fee | `0.020000 ETH` |
+| Net reserve input | `1.980000 ETH` |
+| Tokens out | `61,913,696.06` |
+| Minimum at 1% slippage | `61,294,559.09` |
+| Price impact | `6.19%` |
+
+Values are generated from the demo configuration, not a live market or promise of execution. The same raw bigint fields can feed contract fixtures and a human-readable confirmation panel.
+
+### Transaction UI lifecycle
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Launch UI
+    participant M as Simulator
+    participant W as Wallet
+    participant C as Contract
+
+    U->>UI: Enter amount
+    UI->>M: Quote from current state
+    M-->>UI: Output, fee, impact, minimum
+    UI->>W: Freeze quote and request signature
+    W->>C: Submit bounded transaction
+    C-->>UI: Receipt and authoritative state
+    UI->>M: Reconcile next quote
+```
+
 Run the included two-step simulation:
 
 ```bash
@@ -118,6 +177,16 @@ The suite checks:
 - invalid fee and slippage rejection.
 
 These are reference tests, not a substitute for contract fuzzing, symbolic analysis, adversarial MEV testing, or an external audit.
+
+### Economic invariants
+
+| Invariant | Why it is tested |
+| --- | --- |
+| `kAfter >= kBefore` | Integer rounding must not leak reserve value |
+| Larger valid buys return more tokens | Quote output must remain monotonic |
+| Round trip cannot create profit | Fees and reserve transitions must resist trivial extraction |
+| Net base, not gross input, advances graduation | Protocol fees cannot fake liquidity progress |
+| Post-graduation quote rejects | Product and contract lifecycle stay aligned |
 
 ## Product and UI rationale
 
@@ -143,6 +212,24 @@ Production integration should compare this model against contract view methods a
 4. deadline and maximum-input handling;
 5. migration-liquidity accounting at graduation;
 6. chain-specific gas and native-token wrapping behavior.
+
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| [`src/math.ts`](src/math.ts) | Integer division and formatting-safe primitives |
+| [`src/curve.ts`](src/curve.ts) | Buy/sell quotes, fees, impact, graduation |
+| [`src/model.ts`](src/model.ts) | Configuration, state, and quote contracts |
+| [`examples/run.ts`](examples/run.ts) | Deterministic two-step simulation |
+| [`test/curve.test.ts`](test/curve.test.ts) | Economic and lifecycle invariants |
+
+## What this case study demonstrates
+
+- translating protocol economics into deterministic frontend-safe code;
+- reasoning about integer precision, rounding direction, and invariants;
+- exposing fee and risk primitives for understandable transaction UX;
+- designing the simulation as a pure state transition rather than hidden mutation;
+- separating a public verification model from private deployment parameters.
 
 ## Scope
 
