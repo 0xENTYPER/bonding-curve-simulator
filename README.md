@@ -235,6 +235,12 @@ Production integration should compare this model against contract view methods a
 
 The constants in the demo are illustrative. They do not describe a live market or promise an economic outcome. The repository contains no private deployment addresses, keys, production fee recipients, or launch configuration.
 
+## Related work
+
+- [baggy-launchpad-protocol](https://github.com/0xENTYPER/baggy-launchpad-protocol) places curve quotes inside the full token-launch lifecycle.
+- [multi-chain-token-resolver](https://github.com/0xENTYPER/multi-chain-token-resolver) handles token identity and market selection after discovery.
+- [Baggy](https://github.com/0xENTYPER/baggy) shows the product interface around launch and trading decisions.
+
 ## Author
 
 Built by [0xENTYPER](https://github.com/0xENTYPER).
